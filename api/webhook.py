@@ -3,7 +3,7 @@ import json
 from http.server import BaseHTTPRequestHandler
 
 # Token အမှန်ထည့်ထားပါတယ်
-bot = telebot.TeleBot('8512366652:AAHZIt4ZzHc2TtplWF61ljpSoM_is8lenbI', threaded=False)
+bot = telebot.TeleBot('8512366652:AAEO2TcxQn6kPL5ZyZqPcik7SL21LheIPHY', threaded=False)
 
 class handler(BaseHTTPRequestHandler):
     def do_POST(self):
