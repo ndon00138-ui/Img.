@@ -1,2 +1,5 @@
 requests
 pyTelegramBotAPI
+qrcode
+pillow
+flask
