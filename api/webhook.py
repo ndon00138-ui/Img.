@@ -1,56 +1,68 @@
 import telebot
 import requests
-import json
-from http.server import BaseHTTPRequestHandler
+import qrcode
+import io
+import os
+from flask import Flask, request
 
-# ၁။ သင့်ရဲ့ Bot Token
-API_TOKEN = '8512366652:AAFI22GhtOtOP-QCQw9R6-6u1kqPJqMm03s'
+# ၁။ သင့်ရဲ့ Keys များကို ဖြည့်ပါ
+API_TOKEN = '8512366652:AAHebX2fmUNQfj7sITrQt0g6ZAVxVy2l4qg'
+IMGBB_API_KEY = 'e0e31e5ba42e35978ea3495c7bbe3ae7'
+GEMINI_API_KEY = 'AIzaSyCQ1GckgGZK6s4yRFkAfKXACAwA9bJU1P8'
+
 bot = telebot.TeleBot(API_TOKEN, threaded=False)
+app = Flask(__name__)
 
-class handler(BaseHTTPRequestHandler):
-    def do_POST(self):
-        content_length = int(self.headers['Content-Length'])
-        post_data = self.rfile.read(content_length)
-        update = telebot.types.Update.de_json(post_data.decode('utf-8'))
+# --- AI Function ---
+def get_ai_response(text):
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+    payload = {"contents": [{"parts": [{"text": text}]}]}
+    try:
+        res = requests.post(url, json=payload, timeout=10)
+        return res.json()['candidates'][0]['content']['parts'][0]['text']
+    except:
+        return "AI မအားသေးလို့ ခဏနေမှ ပြန်မေးပေးပါခင်ဗျာ။"
+
+# --- Webhook Endpoint ---
+@app.route('/api/webhook', methods=['POST'])
+def webhook():
+    if request.headers.get('content-type') == 'application/json':
+        json_string = request.get_data().decode('utf-8')
+        update = telebot.types.Update.de_json(json_string)
         bot.process_new_updates([update])
-        self.send_response(200)
-        self.send_header('Content-type', 'application/json')
-        self.end_headers()
-        self.wfile.write(json.dumps({"status": "ok"}).encode())
+        return ''
+    return 'Forbidden', 403
 
-# Start Command ပို့တဲ့အခါ
-@bot.message_handler(commands=['start'])
-def start(message):
-    bot.reply_to(message, "📸 မင်္ဂလာပါ! ကျွန်တော့်ဆီ ပုံတစ်ပုံ ပို့ပေးပါ။\nကျွန်တော်က အဲ့ဒီပုံရဲ့ URL Link ကို ထုတ်ပေးပါ့မယ်။ ✨")
-
-# ပုံပို့လာတဲ့အခါ Link ထုတ်ပေးခြင်း
+# --- Photo Handler (Link & QR) ---
 @bot.message_handler(content_types=['photo'])
 def handle_photo(message):
+    bot.reply_to(message, "ပုံကို Link ပြောင်းနေပါသည်...")
     try:
-        # Telegram ဆီက ပုံကို ယူခြင်း
+        # Telegram ကနေ ပုံကို ယူခြင်း
         file_info = bot.get_file(message.photo[-1].file_id)
-        downloaded_file = bot.download_file(file_info.file_path)
-
-        # Telegra.ph သို့ Upload တင်ခြင်း
+        img_data = bot.download_file(file_info.file_path)
+        
+        # ImgBB သို့ တင်ခြင်း
         response = requests.post(
-            'https://telegra.ph/upload',
-            files={'file': ('file', downloaded_file, 'image/jpeg')}
+            "https://api.imgbb.com/1/upload",
+            data={"key": IMGBB_API_KEY},
+            files={"image": img_data}
         )
-        
-        # ရလာတဲ့ Link ကို ပြန်ပို့ပေးခြင်း
-        img_url = 'https://telegra.ph' + response.json()[0]['src']
-        
-        reply_text = (
-            f"✅ ပုံရဲ့ Link ရပါပြီဗျ -\n\n"
-            f"🔗 {img_url}\n\n"
-            f"ဒီ Link ကို ဘယ်နေရာမှာမဆို ပြန်သုံးလို့ရပါတယ်။"
-        )
-        bot.reply_to(message, reply_text)
-        
-    except Exception as e:
-        bot.reply_to(message, "❌ စိတ်မရှိပါနဲ့ဗျ၊ Link ထုတ်ပေးဖို့ အခက်အခဲရှိနေပါတယ်။ နောက်တစ်ခေါက် ပြန်စမ်းကြည့်ပါဦး။")
+        img_url = response.json()['data']['url']
 
-# တခြား စာသားတွေ ပို့လာရင်
-@bot.message_handler(func=lambda message: True)
-def other_messages(message):
-    bot.reply_to(message, "ပုံ (Photo) ပဲ ပို့ပေးပါခင်ဗျာ။ ကျွန်တော်က ပုံတွေကိုပဲ Link ပြောင်းပေးနိုင်တာပါ 🖼️")
+        # QR Code ထုတ်ခြင်း
+        qr = qrcode.make(img_url)
+        qr_io = io.BytesIO()
+        qr.save(qr_io, 'PNG')
+        qr_io.seek(0)
+
+        bot.send_photo(message.chat.id, qr_io, caption=f"✅ ပုံ Link: {img_url}")
+    except:
+        bot.reply_to(message, "❌ စိတ်မရှိပါနဲ့ဗျာ။ Link ထုတ်ပေးဖို့ အခက်အခဲရှိနေပါတယ်။")
+
+# --- Text Handler (AI Chat) ---
+@bot.message_handler(func=lambda m: True)
+def chat(message):
+    bot.send_chat_action(message.chat.id, 'typing')
+    response = get_ai_response(message.text)
+    bot.reply_to(message, response)
