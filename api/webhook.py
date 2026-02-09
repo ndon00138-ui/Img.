@@ -4,7 +4,7 @@ import qrcode
 import io
 from flask import Flask, request
 
-# သင့်ရဲ့ Keys များကို ဒီမှာ ထည့်ပါ
+# သင့်ရဲ့ Keys များ
 API_TOKEN = '8512366652:AAEMH3Ko4emBHDI6SvbZratAQww1RBGsFbQ'
 IMGBB_API_KEY = 'e0e31e5ba42e35978ea3495c7bbe3ae7'
 
@@ -26,18 +26,18 @@ def start(message):
 
 @bot.message_handler(content_types=['photo'])
 def handle_photo(message):
-    msg = bot.reply_to(message, "⌛ ပုံကို Link ပြောင်းနေပါတယ်...")
+    msg = bot.reply_to(message, "⌛ ပုံကို Upload တင်နေပါတယ်...")
     try:
-        # ၁။ Telegram ဆီက ပုံကို ဒေါင်းလုဒ်ဆွဲခြင်း
+        # ၁။ Telegram ဆီက ပုံကိုယူခြင်း
         file_info = bot.get_file(message.photo[-1].file_id)
         img_data = bot.download_file(file_info.file_path)
 
-        # ၂။ ImgBB API သို့ Upload တင်ခြင်း
+        # ၂။ ImgBB သို့ ပို့ခြင်း (Timeout ကို 10s ပဲထားပါမယ်)
         res = requests.post(
             "https://api.imgbb.com/1/upload",
             data={"key": IMGBB_API_KEY},
             files={"image": img_data},
-            timeout=15
+            timeout=10
         )
         data = res.json()
         
@@ -58,12 +58,13 @@ def handle_photo(message):
                 caption=f"✅ ပုံ Link ရပါပြီ -\n\n{img_url}"
             )
         else:
-            bot.edit_message_text("❌ ImgBB Error: API Key ကို စစ်ဆေးပါ။", message.chat.id, msg.message_id)
+            bot.edit_message_text("❌ ImgBB က ငြင်းပယ်လိုက်ပါတယ်။ API Key ကို ပြန်စစ်ကြည့်ပါ။", message.chat.id, msg.message_id)
 
+    except requests.exceptions.Timeout:
+        bot.edit_message_text("❌ Server က အရမ်းနှေးနေလို့ ခဏနေမှ ပြန်စမ်းကြည့်ပါဦး။", message.chat.id, msg.message_id)
     except Exception as e:
-        bot.edit_message_text(f"❌ အမှားတစ်ခု ရှိနေပါတယ် - {str(e)}", message.chat.id, msg.message_id)
+        bot.edit_message_text(f"❌ Error တက်သွားပါတယ် - {str(e)}", message.chat.id, msg.message_id)
 
-# Text ပို့ရင် ဘာမှမလုပ်အောင် ထားနိုင်ပါတယ် (သို့မဟုတ်) အကြောင်းပြန်ခိုင်းထားပါ
 @bot.message_handler(func=lambda m: True)
 def text_only(message):
     bot.reply_to(message, "ကျေးဇူးပြု၍ ဓာတ်ပုံ (Image) ပဲ ပို့ပေးပါခင်ဗျာ။")
